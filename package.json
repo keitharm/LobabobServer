@@ -1,0 +1,33 @@
+{
+  "name": "lobabob",
+  "version": "1.0.0",
+  "description": "Lobabob turns any directory into a basic GET webserver",
+  "bin": {
+    "lobabob": "server.js"
+  },
+  "main": "server",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "preferGlobal": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keitharm/LobabobServer.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/keitharm/LobabobServer/issues"
+  },
+  "homepage": "https://github.com/keitharm/LobabobServer#readme",
+  "dependencies": {
+    "etag": "^1.7.0",
+    "lodash": "^4.13.1",
+    "mime-types": "^2.1.11",
+    "moment-timezone": "^0.5.4",
+    "parse-headers": "^2.0.1",
+    "urldecode": "^1.0.1",
+    "yargs": "^4.7.1"
+  }
+}
