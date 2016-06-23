@@ -1,5 +1,7 @@
 # Lobabob Server
-Turn any directory into a basic GET webserver
+Turn any directory into a basic GET webserver.
+
+`npm install lobabob -g`
 
   Usage: lobabob [options]
 
