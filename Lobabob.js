@@ -2,6 +2,7 @@ const fs     = require('fs');
 const net    = require('net');
 const path   = require('path');
 const _      = require('lodash');
+
 const parse  = require('parse-headers');
 const mime   = require('mime-types');
 const moment = require('moment-timezone');
@@ -9,15 +10,18 @@ const etag   = require('etag');
 const decode = require('urldecode');
 
 const statusCodes = require('./statusCodes.json');
-const VERSION = "0.1";
+const VERSION     = "0.1";
 
 function Lobabob(options) {
   this.options = options;
   this.setDefaults();
+
+  // Directory to serve static files from
   this.set('static', path.resolve(this.get('static')));
   this.debug(this.options);
 }
 
+// Getters & Setters to interact with options
 Lobabob.prototype.set = function(prop, val) {
   this.options[prop] = val;
 };
@@ -26,10 +30,11 @@ Lobabob.prototype.get = function(prop, val) {
   return this.options[prop];
 };
 
+// Default settings
 Lobabob.prototype.setDefaults = function() {
   let defaultOptions = {
     port:   1337,
-    static: '', // default to current directory
+    static: '', // default static to current directory
     debug:  false,
     index:  'index.html',
     showDir: false
@@ -39,9 +44,8 @@ Lobabob.prototype.setDefaults = function() {
   this.options = _.defaults(this.options, defaultOptions);
 };
 
+// Start listening and handling requests
 Lobabob.prototype.start = function() {
-  var self = this;
-
   console.log(`Lobabob server listening on port ${this.get('port')}`);
 
   this.server = net.createServer(sock => {
@@ -60,15 +64,15 @@ Lobabob.prototype.start = function() {
 
       // Only allow GET requests for now
       if (request.verb !== 'GET') {
-        self.genLog(405, request, sock);
-        sock.end(self.genHeaders(405, null, ['Content-Length: 0']));
+        this.genLog(405, request, sock);
+        sock.end(this.genHeaders(405, null, ['Content-Length: 0']));
       } else {
-        self.resourceHandler(headers, request, sock);
+        this.resourceHandler(headers, request, sock);
       }
     })
 
     sock.on('error', err => {
-      self.debug(err);
+      this.debug(err);
     });
 
   }).listen(this.get('port'));
@@ -78,13 +82,15 @@ Lobabob.prototype.debug = function() {
   if (this.get('debug')) console.log.apply(null, arguments);
 };
 
+// Generate proper headers given the error code
 Lobabob.prototype.genHeaders = function(code, body, extra = []) {
   let headers = [
     `HTTP/1.1 ${code} ${statusCodes[code]}`,
     `Server: Lobabob v${VERSION}`,
     'Access-Control-Allow-Methods: GET',
     ...extra,
-    'Connection: keep-alive'
+    'Connection: keep-alive',
+    `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`
   ];
 
   headers.push('');
@@ -105,66 +111,73 @@ Lobabob.prototype.genLog = function(code, request, sock) {
 };
 
 Lobabob.prototype.resourceHandler = function(headers, request, sock) {
-  let self = this;
   let requestPath = path.join(this.get('static'), request.path);
+
+  const error = code => {
+    this.genLog(code, request, sock);
+    sock.end(this.genHeaders(code));
+  };
 
   fs.stat(requestPath, (err, stats) => {
     // If this was a recursive call to check for the index file, remove it from the path
     if (request.dir) {
-      request.path = request.path.slice(0, request.path.indexOf(self.get('index')));
+      request.path = request.path.slice(0, request.path.indexOf(this.get('index')));
     }
 
     if (err) {
       error(404);
     } else if (stats.isDirectory()) {
-      if (self.get('showDir')) {
-        self.genDirectoryListing(path.resolve(requestPath), path.resolve(request.path), body => {
+
+      // Directory Listing is true
+      if (this.get('showDir')) {
+        this.genDirectoryListing(path.resolve(requestPath), path.resolve(request.path), body => {
           if (body === "") {
             error(500);
           } else {
-            self.genLog(200, request, sock);
-            sock.write(self.genHeaders(200, body, [
+            this.genLog(200, request, sock);
+            sock.write(this.genHeaders(200, body, [
               `Content-Type: text/html;charset=UTF-8`,
               `Content-Length: ${body.length}`,
-              'Cache-Control: no-cache',
-              `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`
+              'Cache-Control: no-cache'
             ]));
           }
         });
       } else {
-        request.path = path.join(request.path, self.get('index'));
+        request.path = path.join(request.path, this.get('index'));
         request.dir = true;
-        self.resourceHandler(headers, request, sock);
+        this.resourceHandler(headers, request, sock);
       }
     } else {
+
+      // Check for etags in order to return 304 without content
       let oldetag = headers['if-none-match'];
       if (etag(stats) === oldetag) {
-        self.genLog(304, request, sock);
-        sock.write(self.genHeaders(304));
+        this.genLog(304, request, sock);
+        sock.write(this.genHeaders(304));
         sock.end();
       } else {
 
-        // For streaming binary files
+        // For streaming binary files with partialcontent
         if (headers.range !== undefined) {
-          let rangeRequest = self.readRangeHeader(headers.range, stats.size);
+          let rangeRequest = this.readRangeHeader(headers.range, stats.size);
 
           let start = rangeRequest.Start;
           let end   = rangeRequest.End;
 
-          // If the range can't be fulfilled. 
+          // If invalid range
           if (start >= stats.size || end >= stats.size) {
-            // Indicate the acceptable range.
+
+            // Proper range
             newHeaders.push(`Content-Range: bytes */${stats.size}`);
 
-            self.genLog(416, request, sock);
-            sock.write(self.genHeaders(416, null, [
-              `Content-Length: 0`,
-              `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`
+            this.genLog(416, request, sock);
+            sock.write(this.genHeaders(416, null, [
+              `Content-Length: 0`
             ]));
           } else {
             let newHeaders = [];
 
-            // Indicate the current range.
+            // Current selected range
             newHeaders.push(`Content-Range: bytes ${start}-${end}/${stats.size}`);
             newHeaders.push(`Content-Length: ${start === end ? 0 : (end - start + 1)}`);
             newHeaders.push(`Accept-Ranges: bytes`);
@@ -172,14 +185,14 @@ Lobabob.prototype.resourceHandler = function(headers, request, sock) {
 
             let contents = fs.createReadStream(requestPath, { start: start, end: end });
             contents.on('open', () => {
-              self.genLog(206, request, sock);
-              sock.write(self.genHeaders(206, null, [
+              this.genLog(206, request, sock);
+              sock.write(this.genHeaders(206, null, [
                 `Last-Modified: ${moment(stats.mtime).tz("Africa/Bissau").format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
                 `ETag: ${etag(stats)}`,
                 `Content-Type: ${mime.contentType(path.extname(requestPath)) || 'application/octet-stream'}`,
-                `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
                 ...newHeaders
               ]));
+
               contents.pipe(sock);
             });
           }
@@ -188,24 +201,19 @@ Lobabob.prototype.resourceHandler = function(headers, request, sock) {
         } else {
           let contents = fs.createReadStream(requestPath);
           contents.on('open', () => {
-            self.genLog(200, request, sock);
-            sock.write(self.genHeaders(200, null, [
+            this.genLog(200, request, sock);
+            sock.write(this.genHeaders(200, null, [
               `Last-Modified: ${moment(stats.mtime).tz("Africa/Bissau").format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
               `ETag: ${etag(stats)}`,
               `Content-Type: ${mime.contentType(path.extname(requestPath)) || 'application/octet-stream'}`,
               `Content-Length: ${stats.size}`,
-              'Cache-Control: public, max-age=0',
-              `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`
+              'Cache-Control: public, max-age=0'
             ]));
+
             contents.pipe(sock);
           });
         }
       }
-    }
-
-    function error(code) {
-      self.genLog(code, request, sock);
-      sock.end(self.genHeaders(code));
     }
   });
 };
@@ -220,6 +228,7 @@ Lobabob.prototype.statusColor = function(status) {
   return `\x1b[${color}m${status}\x1b[0m`;
 };
 
+// Extract proper range for partial content
 Lobabob.prototype.readRangeHeader = function(range, totalLength) {
   if (range == null || range.length == 0)
     return null;
@@ -245,8 +254,8 @@ Lobabob.prototype.readRangeHeader = function(range, totalLength) {
   return result;
 };
 
+// Generate Apache style directory listing
 Lobabob.prototype.genDirectoryListing = function(dir, request, cb) {
-  let self = this;
   let body = "";
   fs.readdir(dir, (err, files) => {
     if (err) cb(body);
@@ -266,7 +275,7 @@ Lobabob.prototype.genDirectoryListing = function(dir, request, cb) {
       });
       body += `
         </ul>
-        <address>Lobabob Server v${VERSION} Port ${self.get('port')}</address>
+        <address>Lobabob Server v${VERSION} Port ${this.get('port')}</address>
         </body></html>
       `;
       cb(body);

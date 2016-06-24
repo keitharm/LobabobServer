@@ -9,6 +9,6 @@ Turn any directory into a basic GET webserver.
     
     -p, --port    Specify port Lobabob Server should run on. Default 1337
     -v, --debug   Output helpful debugging information. Default false
-    -s, --static  Specify the static directory to serve files from. Overrides index setting. Default current directory.
+    -s, --static  Specify the static directory to serve files from. Overrides index setting. Default current directory
     -d, --dir     Directory listing. Default false
-    -i, --index   Specify index file. Default index.htm
+    -i, --index   Specify index file. Default index.html
