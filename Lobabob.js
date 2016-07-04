@@ -49,33 +49,41 @@ Lobabob.prototype.start = function() {
   console.log(`Lobabob server listening on port ${this.get('port')}`);
 
   this.server = net.createServer(sock => {
+    let buffer = "";
+    let input;
 
     sock.on('data', data => {
-      data = data.toString(); // Convert buffer
-
-      // Extract headers along with verb and path
-      let resourceInfo = data.slice(0, data.indexOf('\r\n')).split(' ');
-      let headers = parse(data);
-
-      let request = {
-        verb: resourceInfo[0],
-        path: decode(resourceInfo[1])
-      };
-
-      // Only allow GET requests for now
-      if (request.verb !== 'GET') {
-        this.genLog(405, request, sock);
-        sock.end(this.genHeaders(405, null, ['Content-Length: 0']));
-      } else {
-        this.resourceHandler(headers, request, sock);
+      input = data.toString();
+      buffer += input;
+      if (buffer.slice(-4) === '\r\n\r\n') {
+        this.parseHeaders(buffer, sock);
       }
-    })
+    });
 
     sock.on('error', err => {
       this.debug(err);
     });
 
   }).listen(this.get('port'));
+};
+
+Lobabob.prototype.parseHeaders = function(data, sock) {
+  // Extract headers along with verb and path
+  let resourceInfo = data.slice(0, data.indexOf('\r\n')).split(' ');
+  let headers = parse(data);
+
+  let request = {
+    verb: resourceInfo[0],
+    path: decode(resourceInfo[1])
+  };
+
+  // Only allow GET requests for now
+  if (request.verb !== 'GET') {
+    this.genLog(405, request, sock);
+    sock.end(this.genHeaders(405, null, ['Content-Length: 0']));
+  } else {
+    this.resourceHandler(headers, request, sock);
+  }
 };
 
 Lobabob.prototype.debug = function() {
