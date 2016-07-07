@@ -115,18 +115,16 @@ function Handler(request, headers) {
           try {
             cgi.run();
             cgi.on('done', data => {
+              utils.genLog(data.status, request);
               this.response.setType("CGI");
               this.response.setHeaders(data.headers);
               this.response.setBody(data.body);
-              utils.genLog(data.status, request);
               this.response.setStatus(data.status);
               this.done();
             });
           } catch (e) {
             utils.genLog(500, request);
             this.response.setStatus(500);
-            //this.response.setBody(body);
-            //this.response.setType("dirList");
             this.done();
           }
         // Normal static file

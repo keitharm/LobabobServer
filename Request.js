@@ -46,7 +46,6 @@ Request.prototype.setAddress = function(parts) {
 
 Request.prototype.setBody = function(body) {
   this.body = body;
-  console.log(this.body);
 };
 
 Request.prototype.getIP = function() { return this.ip };

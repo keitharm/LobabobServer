@@ -17,29 +17,51 @@ util.inherits(CGI, EventEmitter);
 
 CGI.prototype.run = function(cb) {
   this.output = "";
+  let bodyLen = 0, bodyType = "";
+  if (this.request.body !== undefined) {
+    bodyType = this.request.headers['content-type'];
+    bodyLen = this.request.body.length;
+  }
+
   let child = spawn(this.requestPath, [], {env: {
     "REQUEST_METHOD": this.request.getVerb(),
     "SCRIPT_FILENAME": this.requestPath,
-    "SCRIPT_NAME": this.requestPath,
-    "REQUEST_URI": this.requestPath,
-    "CONTENT_TYPE": "",
-    "CONTENT_LENGTH": "",
+    "CONTENT_TYPE": bodyType,
+    "CONTENT_LENGTH": bodyLen,
     "SERVER_PROTOCOL": "HTTP/1.1",
     "GATEWAY_INTERFACE": "CGI/1.1",
+    "REMOTE_HOST": this.request.getIP(),
     "REMOTE_ADDR": this.request.getIP(),
     "REMOTE_PORT": this.request.getPort(),
     "REDIRECT_STATUS": 200,
-    "DOCUMENT_ROOT": "/",
     "HTTP_COOKIE": this.request.getCookies(),
     "QUERY_STRING": this.request.getQueryString()
   }});
+  console.log({
+    "REQUEST_METHOD": this.request.getVerb(),
+    "SCRIPT_FILENAME": this.requestPath,
+    "CONTENT_TYPE": bodyType,
+    "CONTENT_LENGTH": bodyLen,
+    "SERVER_PROTOCOL": "HTTP/1.1",
+    "GATEWAY_INTERFACE": "CGI/1.1",
+    "REMOTE_HOST": this.request.getIP(),
+    "REMOTE_ADDR": this.request.getIP(),
+    "REMOTE_PORT": this.request.getPort(),
+    "REDIRECT_STATUS": 200,
+    "HTTP_COOKIE": this.request.getCookies(),
+    "QUERY_STRING": this.request.getQueryString()
+  });
+
+  if (this.request.body !== undefined) {
+    child.stdin.write(this.request.body);
+  }
 
   child.stdout.on('data', data => {
     this.output += data;
   });
 
   child.stderr.on('data', (data) => {
-    console.log(`stderr: ${data}`);
+    //console.log(`stderr: ${data}`);
   });
 
   child.on('close', code => {
