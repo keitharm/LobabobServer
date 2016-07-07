@@ -12,7 +12,6 @@ const utils = require('./utils');
 let options;
 
 function CGI(requestPath, request) {
-  console.log(request);
   this.requestPath = requestPath;
   this.request = request;
 }
