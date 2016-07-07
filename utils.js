@@ -2,7 +2,7 @@ const VERSION = "1.1.1";
 const Promise = require('bluebird');
 const _       = require('lodash');
 const path    = require('path');
-const async    = require('async');
+const async   = require('async');
 const fs      = Promise.promisifyAll(require("fs"));
 
 let options;

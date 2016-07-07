@@ -149,10 +149,21 @@ function Handler(request, headers) {
       }
     }
 
-  // Invalid path = not found
+  // Invalid path = not found or malformed request
   }, () => {
-    utils.genLog(404, request);
-    this.response.setStatus(404);
+    let verbs = [
+      'GET', 'POST', 'PUT', 'PATCH',
+      'DELETE', 'COPY', 'HEAD', 'OPTIONS'
+    ];
+
+    // Invalid verb
+    if (verbs.indexOf(this.request.getVerb()) === -1) {
+      utils.genLog(400, request);
+      this.response.setStatus(400);
+    } else {
+      utils.genLog(404, request);
+      this.response.setStatus(404);
+    }
     this.done();
   });
 }
