@@ -30,11 +30,14 @@ CGI.prototype.run = function(cb) {
     "DOCUMENT_ROOT": options['static'],
     "HTTP_COOKIE": this.request.getCookies(),
     "HTTP_HOST": os.hostname(),
+    "SERVER_NAME": os.hostname(),
+    "SERVER_PORT": options['port'],
     "HTTP_REFERER": this.request.headers.referer || '',
     "HTTP_USER_AGENT": this.request.headers['user-agent'],
     "SERVER_SOFTWARE": `Lobabob v${utils.VERSION}`,
     "REQUEST_METHOD": this.request.getVerb(),
     "SCRIPT_FILENAME": this.requestPath,
+    "SCRIPT_NAME": this.request.path,
     "CONTENT_TYPE": bodyType,
     "CONTENT_LENGTH": bodyLen,
     "SERVER_PROTOCOL": "HTTP/1.1",
@@ -55,7 +58,7 @@ CGI.prototype.run = function(cb) {
   });
 
   child.stderr.on('data', (data) => {
-    //console.log(`stderr: ${data}`);
+    this.output += data;
   });
 
   child.on('close', code => {
