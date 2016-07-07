@@ -22,143 +22,52 @@ function Handler(request, headers) {
   this.response = new Response.create();
 
   // Create the full path of the request
-  let requestPath = path.join(options.static, this.request.path);
+  this.requestPath = path.join(options.static, this.request.path);
 
   // Make sure user is requesting a valid file
-  validPath(requestPath).then(info => {
+  this.validPath().then(info => {
+    this.info = info; // Save info regarding file
 
     // Check if directory
-    if (info.dir) {
+    if (this.info.dir) {
 
       // Check for directory listing
       if (options['showDir']) {
-        utils.genDirectoryListing(path.resolve(requestPath), path.resolve(this.request.path)).then(body => {
-          utils.genLog(200, request);
-          this.response.setStatus(200);
-          this.response.setBody(body);
-          this.response.setType("dirList");
-          this.done();
-        }, () => {
-          // Server error/something bad happened
-          utils.genLog(500, request);
-          this.response.setStatus(500);
-          this.done();
-        });
+        this.dirList();
+
+      // Check for index file and return 404 if not found
       } else {
-        // Check if it has an index file
-        hasIndex(requestPath).then(stat => {
-          let fileEtag = etag(stat);
-          let code = 200;
-
-          this.response.setEtag(fileEtag);
-          if (this.headers['if-none-match'] === fileEtag) {
-            code = 304;
-          }
-
-          utils.genLog(code, request);
-          this.response.setStatus(code);
-          this.response.setSize(stat.size);
-          this.response.setMime(mime.contentType(path.extname(path.join(requestPath, options['index']))) || 'application/octet-stream');
-          this.response.setStream(path.join(requestPath, options['index']), () => {
-            this.done();
-          });
-
-        // No index file
-        }, () => {
-          utils.genLog(403, request);
-          this.response.setStatus(403);
-          this.done();
-        })
+        this.serveIndex();
       }
 
     // If it is a file, serve it
     } else {
+
+      // Partial content 206 headers
       if (this.headers.range !== undefined) {
-        let rangeRequest = utils.readRangeHeader(this.headers.range, info.stat.size);
+        this.partialContent();
 
-        let start = rangeRequest.start;
-        let end   = rangeRequest.end;
-
-        // If invalid range
-        if (start >= info.stat.size || end >= info.stat.size) {
-          this.response.setType("invalidRange");
-          this.response.setSize(info.stat.size);
-
-          // Send proper range
-          utils.genLog(416, request);
-          this.response.setStatus(416);
-          this.done();
-        } else {
-          utils.genLog(206, request);
-          this.response.setStatus(206);
-          this.response.setType("validRange");
-          this.response.setSize({start, end, total: info.stat.size});
-          this.response.setMime(mime.contentType(path.extname(requestPath)) || 'application/octet-stream');
-          this.response.setStream(requestPath, {start, end}, () => {
-            this.done();
-          });
-        }
-
-      // Normal static files
+      // Normal static files/CGI
       } else {
 
         // CGI Script
-        if (inCGIFolder(requestPath) && isExecutable(requestPath)) {
-          let cgi = new CGI.create(requestPath, this.request);
-          try {
-            cgi.run();
-            cgi.on('done', data => {
-              utils.genLog(data.status, request);
-              this.response.setType("CGI");
-              this.response.setHeaders(data.headers);
-              this.response.setBody(data.body);
-              this.response.setStatus(data.status);
-              this.done();
-            });
-          } catch (e) {
-            utils.genLog(500, request);
-            this.response.setStatus(500);
-            this.done();
-          }
+        if (this.inCGIFolder() && this.isExecutable()) {
+          this.cgiScript();
+
         // Normal static file
         } else {
-          let fileEtag = etag(info.stat);
-          let code = 200;
-
-          this.response.setEtag(fileEtag);
-          if (this.headers['if-none-match'] === fileEtag) {
-            code = 304;
-          }
-
-          utils.genLog(code, request);
-          this.response.setStatus(code);
-          this.response.setSize(info.stat.size);
-          this.response.setMime(mime.contentType(path.extname(requestPath)) || 'application/octet-stream');
-          this.response.setStream(requestPath, () => {
-            this.done();
-          });
+          this.staticFile();
         }
       }
     }
 
   // Invalid path = not found or malformed request
   }, () => {
-    let verbs = [
-      'GET', 'POST', 'PUT', 'PATCH',
-      'DELETE', 'COPY', 'HEAD', 'OPTIONS'
-    ];
-
-    // Invalid verb
-    if (verbs.indexOf(this.request.getVerb()) === -1) {
-      utils.genLog(400, request);
-      this.response.setStatus(400);
-    } else {
-      utils.genLog(404, request);
-      this.response.setStatus(404);
-    }
-    this.done();
+    this.invalidPath();
   });
 }
+
+util.inherits(Handler, EventEmitter);
 
 Handler.prototype.done = function() {
   setImmediate(() => {
@@ -166,18 +75,134 @@ Handler.prototype.done = function() {
   });
 };
 
-util.inherits(Handler, EventEmitter);
+Handler.prototype.dirList = function() {
+  utils.genDirectoryListing(path.resolve(this.requestPath), path.resolve(this.request.path)).then(body => {
+    utils.genLog(200, this.request);
+    this.response.setStatus(200);
+    this.response.setBody(body);
+    this.response.setType("dirList");
+    this.done();
+  }, () => {
+    // Server error/something bad happened
+    utils.genLog(500, this.request);
+    this.response.setStatus(500);
+    this.done();
+  });
+};
 
-// Receive options
-function init(ops) {
-  options = ops;
-}
+Handler.prototype.serveIndex = function() {
+  // Check if it has an index file
+  this.hasIndex().then(stat => {
+    let fileEtag = etag(stat);
+    let code = 200;
 
-function hasIndex(requestPath) {
+    this.response.setEtag(fileEtag);
+    if (this.headers['if-none-match'] === fileEtag) {
+      code = 304;
+    }
+
+    utils.genLog(code, this.request);
+    this.response.setStatus(code);
+    this.response.setSize(stat.size);
+    this.response.setMime(mime.contentType(path.extname(path.join(this.requestPath, options['index']))) || 'application/octet-stream');
+    this.response.setStream(path.join(this.requestPath, options['index']), () => {
+      this.done();
+    });
+
+  // No index file
+  }, () => {
+    utils.genLog(403, this.request);
+    this.response.setStatus(403);
+    this.done();
+  })
+};
+
+Handler.prototype.partialContent = function() {
+  let rangeRequest = utils.readRangeHeader(this.headers.range, this.info.stat.size);
+
+  let start = rangeRequest.start;
+  let end   = rangeRequest.end;
+
+  // If invalid range
+  if (start >= this.info.stat.size || end >= this.info.stat.size) {
+    this.response.setType("invalidRange");
+    this.response.setSize(this.info.stat.size);
+
+    // Send proper range
+    utils.genLog(416, this.request);
+    this.response.setStatus(416);
+    this.done();
+  } else {
+    utils.genLog(206, this.request);
+    this.response.setStatus(206);
+    this.response.setType("validRange");
+    this.response.setSize({start, end, total: this.info.stat.size});
+    this.response.setMime(mime.contentType(path.extname(this.requestPath)) || 'application/octet-stream');
+    this.response.setStream(this.requestPath, {start, end}, () => {
+      this.done();
+    });
+  }
+};
+
+Handler.prototype.cgiScript = function() {
+  let cgi = new CGI.create(this.requestPath, this.request);
+  try {
+    cgi.run();
+    cgi.on('done', data => {
+      utils.genLog(data.status, this.request);
+      this.response.setType("CGI");
+      this.response.setHeaders(data.headers);
+      this.response.setBody(data.body);
+      this.response.setStatus(data.status);
+      this.done();
+    });
+  } catch (e) {
+    utils.genLog(500, this.request);
+    this.response.setStatus(500);
+    this.done();
+  }
+};
+
+Handler.prototype.staticFile = function() {
+  let fileEtag = etag(this.info.stat);
+  let code = 200;
+
+  this.response.setEtag(fileEtag);
+  if (this.headers['if-none-match'] === fileEtag) {
+    code = 304;
+  }
+
+  utils.genLog(code, this.request);
+  this.response.setStatus(code);
+  this.response.setSize(this.info.stat.size);
+  this.response.setMime(mime.contentType(path.extname(this.requestPath)) || 'application/octet-stream');
+  this.response.setStream(this.requestPath, () => {
+    this.done();
+  });
+};
+
+Handler.prototype.invalidPath = function() {
+  let verbs = [
+    'GET', 'POST', 'PUT', 'PATCH',
+    'DELETE', 'COPY', 'HEAD', 'OPTIONS'
+  ];
+
+  // Invalid verb
+  if (verbs.indexOf(this.request.getVerb()) === -1) {
+    utils.genLog(400, this.request);
+    this.response.setStatus(400);
+  } else {
+    utils.genLog(404, this.request);
+    this.response.setStatus(404);
+  }
+  this.done();
+};
+
+Handler.prototype.hasIndex = function() {
   return new Promise((resolve, reject) => {
-    fs.statAsync(requestPath).then(dir => {
+    fs.statAsync(this.requestPath).then(dir => {
       if (dir.isDirectory()) {
-        fs.statAsync(path.join(requestPath, options['index'])).then(stats => {
+        fs.statAsync(path.join(this.requestPath, options['index'])).then(stats => {
           resolve(stats);
         }, err => {
           reject(false);
@@ -187,26 +212,31 @@ function hasIndex(requestPath) {
       }
     });
   });
-}
+};
 
-function validPath(requestPath) {
+Handler.prototype.validPath = function() {
   return new Promise((resolve, reject) => {
-    fs.statAsync(requestPath).then(stat => {
+    fs.statAsync(this.requestPath).then(stat => {
       resolve({dir: stat.isDirectory(), stat});
     }, (asf) => {
       reject(false);
     });
   });
-}
-
-function inCGIFolder(requestPath) {
-  return requestPath.indexOf(options.cgibin) === 0;
-}
-
-function isExecutable(path){
-    let res = fs.statSync(path);
-    return !!(1 & parseInt ((res.mode & parseInt ("777", 8)).toString (8)[0]));
 };
+
+Handler.prototype.inCGIFolder = function() {
+  return this.requestPath.indexOf(options.cgibin) === 0;
+};
+
+Handler.prototype.isExecutable = function() {
+  let res = fs.statSync(this.requestPath);
+  return !!(1 & parseInt ((res.mode & parseInt ("777", 8)).toString (8)[0]));
+};
+
+// Receive options
+function init(ops) {
+  options = ops;
+}
 
 module.exports = {
   init,

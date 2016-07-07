@@ -74,6 +74,7 @@ Lobabob.prototype.start = function() {
         // Send completed request object to the handler
         handler = new Handler.create(request, request.getHeaders());
         handler.once('done', response => {
+
           // Pipe response directly to socket if it is a ReadStream
           if (response.stream !== undefined) {
             sock.write(response.output());
