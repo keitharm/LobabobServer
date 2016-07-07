@@ -14,7 +14,7 @@ if (argv.help) {
     -d, --dir\t\tDirectory listing. Default false
     -i, --index\t\tSpecify index file. Default index.html
 `);
-  return;
+  process.exit();
 }
 
 const lobabob = require('./Lobabob')({
