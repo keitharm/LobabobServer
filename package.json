@@ -1,7 +1,7 @@
 {
   "name": "lobabob",
-  "version": "1.0.0",
-  "description": "Lobabob turns any directory into a basic GET webserver",
+  "version": "1.1.1",
+  "description": "Lobabob turns any directory into a basic webserver",
   "bin": {
     "lobabob": "server.js"
   },
@@ -22,6 +22,9 @@
   },
   "homepage": "https://github.com/keitharm/LobabobServer#readme",
   "dependencies": {
+    "async": "^2.0.0-rc.6",
+    "bluebird": "^3.4.1",
+    "cookie": "^0.3.1",
     "etag": "^1.7.0",
     "lodash": "^4.13.1",
     "mime-types": "^2.1.11",

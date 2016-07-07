@@ -9,11 +9,12 @@ if (argv.help) {
 
     -p, --port\t\tSpecify port Lobabob Server should run on. Default 1337
     -v, --debug\t\tOutput helpful debugging information. Default false
-    -s, --static\tSpecify the static directory to serve files from. Overrides index setting. Default current directory.
+    -s, --static\tSpecify the static directory to serve files from. Overrides index setting. Default current directory
+    -c, --cgi\t\tSpecify the cgi-bin directory to serve executable scripts from. Default cgi-bin
     -d, --dir\t\tDirectory listing. Default false
     -i, --index\t\tSpecify index file. Default index.html
 `);
-  return;
+  process.exit();
 }
 
 const lobabob = require('./Lobabob')({
@@ -22,5 +23,6 @@ const lobabob = require('./Lobabob')({
   static: argv.s || argv.static,
   showDir: argv.d || argv.dir,
   index: argv.i || argv.index,
+  cgibin: argv.c || argv.cgi,
 });
 lobabob.start();

@@ -1,25 +1,103 @@
-const fs     = require('fs');
-const net    = require('net');
-const path   = require('path');
-const _      = require('lodash');
+const net   = require('net');
+const path  = require('path');
+const _     = require('lodash');
 
-const parse  = require('parse-headers');
-const mime   = require('mime-types');
-const moment = require('moment-timezone');
-const etag   = require('etag');
-const decode = require('urldecode');
-
-const statusCodes = require('./statusCodes.json');
-const VERSION     = "0.1";
+const Request  = require('./Request');
+const Response = require('./Response');
+const Handler  = require('./Handler');
+const CGI      = require('./CGI');
+const utils    = require('./utils');
 
 function Lobabob(options) {
   this.options = options;
   this.setDefaults();
 
-  // Directory to serve static files from
+  // Directory to serve static files and cgi-bin scripts from
   this.set('static', path.resolve(this.get('static')));
-  this.debug(this.options);
+  this.set('cgibin', path.resolve(this.get('cgibin')));
+
+  // Send server options
+  Request.init(this.options);
+  Response.init(this.options);
+  Handler.init(this.options);
+  CGI.init(this.options);
+  utils.init(this.options);
+
+  utils.debug(this.options);
 }
+
+// Start listening and handling requests
+Lobabob.prototype.start = function() {
+  console.log(`Lobabob server listening on port ${this.get('port')}`);
+
+  net.createServer(sock => {
+    let buffer = "";
+
+    // Make sure we don't keep creating a request object every time we receive data
+    // after the headers are extracted
+    let headersDone = false;
+    let bodyDone    = false;
+
+    sock.on('data', data => {
+      let request, handler;
+      buffer += data;
+
+      // Find 1st occurance of two line breaks marking end of header data
+      if (!headersDone && buffer.indexOf('\r\n\r\n') !== -1) {
+
+        // Build Request object with initial header data
+        request = new Request.create(buffer.slice(0, buffer.indexOf('\r\n\r\n')));
+
+        // Remove headers from buffer
+        buffer = buffer.slice(buffer.indexOf('\r\n\r\n') + 4);
+
+        // Pass ip and port
+        request.setAddress({ip: sock.remoteAddress, port: sock.remotePort});
+
+        headersDone = true;
+      }
+
+      if (request && headersDone && !bodyDone) {
+        if (request.hasBody()) {
+          // // Have to check for chunked request here as well in the future
+          // // Extract body if it is an appropriate request
+          //request.moreData(); // Send the possibly chunked data to the request object
+          request.setBody(buffer);
+          bodyDone = true;
+
+        // If the request verb doesn't expect a bodyDone
+        } else {
+          bodyDone = true;
+        }
+      }
+
+      // All done extracting/parsing headers and the body
+      if (request && headersDone && bodyDone) {
+
+        // Send completed request object to the handler
+        handler = new Handler.create(request, request.getHeaders());
+        handler.once('done', response => {
+          // Pipe response directly to socket if it is a ReadStream
+          if (response.stream !== undefined) {
+            sock.write(response.output());
+            response.stream.pipe(sock);
+
+          // Else, just write to socket since body is included in response
+          } else {
+            sock.end(response.output());
+          }
+        });
+      }
+    });
+
+    sock.on('error', err => {
+      // Don't log errors from client terminating the connection
+      if (err.code === "ECONNRESET" || err.code === "EPIPE") return;
+      utils.debug(err.code);
+    });
+
+  }).listen(this.get('port'));
+};
 
 // Getters & Setters to interact with options
 Lobabob.prototype.set = function(prop, val) {
@@ -32,263 +110,8 @@ Lobabob.prototype.get = function(prop, val) {
 
 // Default settings
 Lobabob.prototype.setDefaults = function() {
-  let defaultOptions = {
-    port:   1337,
-    static: '', // default static to current directory
-    debug:  false,
-    index:  'index.html',
-    showDir: false
-  };
-
   // Replace missing options with default values
-  this.options = _.defaults(this.options, defaultOptions);
-};
-
-// Start listening and handling requests
-Lobabob.prototype.start = function() {
-  console.log(`Lobabob server listening on port ${this.get('port')}`);
-
-  this.server = net.createServer(sock => {
-    let buffer = "";
-    let input;
-
-    sock.on('data', data => {
-      input = data.toString();
-      buffer += input;
-      if (buffer.slice(-4) === '\r\n\r\n') {
-        this.parseHeaders(buffer, sock);
-      }
-    });
-
-    sock.on('error', err => {
-      this.debug(err);
-    });
-
-  }).listen(this.get('port'));
-};
-
-Lobabob.prototype.parseHeaders = function(data, sock) {
-  // Extract headers along with verb and path
-  let resourceInfo = data.slice(0, data.indexOf('\r\n')).split(' ');
-  let headers = parse(data);
-
-  let request = {
-    verb: resourceInfo[0],
-    path: decode(resourceInfo[1])
-  };
-
-  // Only allow GET requests for now
-  if (request.verb !== 'GET') {
-    this.genLog(405, request, sock);
-    sock.end(this.genHeaders(405, null, ['Content-Length: 0']));
-  } else {
-    this.resourceHandler(headers, request, sock);
-  }
-};
-
-Lobabob.prototype.debug = function() {
-  if (this.get('debug')) console.log.apply(null, arguments);
-};
-
-// Generate proper headers given the error code
-Lobabob.prototype.genHeaders = function(code, body, extra = []) {
-  let headers = [
-    `HTTP/1.1 ${code} ${statusCodes[code]}`,
-    `Server: Lobabob v${VERSION}`,
-    'Access-Control-Allow-Methods: GET',
-    ...extra,
-    'Connection: keep-alive',
-    `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`
-  ];
-
-  headers.push('');
-  if (code === 404) {
-    headers.push('The requested resource was not found.');
-  } else if (code === 403) {
-    headers.push('You do not have permission to access this resource.');
-  } else if (code === 401) {
-    headers.push('You are not authorized to access this resource.');
-  } else {
-    headers.push(body);
-  }
-  return headers.join('\r\n');
-};
-
-Lobabob.prototype.genLog = function(code, request, sock) {
-  this.debug(request.verb + " " + request.path + " " + this.statusColor(code) + " " + sock.remoteAddress + ':' + sock.remotePort);
-};
-
-Lobabob.prototype.resourceHandler = function(headers, request, sock) {
-  let requestPath = path.join(this.get('static'), request.path);
-
-  const error = code => {
-    this.genLog(code, request, sock);
-    sock.end(this.genHeaders(code));
-  };
-
-  fs.stat(requestPath, (err, stats) => {
-    // If this was a recursive call to check for the index file, remove it from the path
-    if (request.dir) {
-      request.path = request.path.slice(0, request.path.indexOf(this.get('index')));
-    }
-
-    if (err) {
-      error(404);
-    } else if (stats.isDirectory()) {
-
-      // Directory Listing is true
-      if (this.get('showDir')) {
-        this.genDirectoryListing(path.resolve(requestPath), path.resolve(request.path), body => {
-          if (body === "") {
-            error(500);
-          } else {
-            this.genLog(200, request, sock);
-            sock.write(this.genHeaders(200, body, [
-              `Content-Type: text/html;charset=UTF-8`,
-              `Content-Length: ${body.length}`,
-              'Cache-Control: no-cache'
-            ]));
-          }
-        });
-      } else {
-        request.path = path.join(request.path, this.get('index'));
-        request.dir = true;
-        this.resourceHandler(headers, request, sock);
-      }
-    } else {
-
-      // Check for etags in order to return 304 without content
-      let oldetag = headers['if-none-match'];
-      if (etag(stats) === oldetag) {
-        this.genLog(304, request, sock);
-        sock.write(this.genHeaders(304));
-        sock.end();
-      } else {
-
-        // For streaming binary files with partialcontent
-        if (headers.range !== undefined) {
-          let rangeRequest = this.readRangeHeader(headers.range, stats.size);
-
-          let start = rangeRequest.Start;
-          let end   = rangeRequest.End;
-
-          // If invalid range
-          if (start >= stats.size || end >= stats.size) {
-
-            // Proper range
-            newHeaders.push(`Content-Range: bytes */${stats.size}`);
-
-            this.genLog(416, request, sock);
-            sock.write(this.genHeaders(416, null, [
-              `Content-Length: 0`
-            ]));
-          } else {
-            let newHeaders = [];
-
-            // Current selected range
-            newHeaders.push(`Content-Range: bytes ${start}-${end}/${stats.size}`);
-            newHeaders.push(`Content-Length: ${start === end ? 0 : (end - start + 1)}`);
-            newHeaders.push(`Accept-Ranges: bytes`);
-            newHeaders.push(`Cache-Control: no-cache`);
-
-            let contents = fs.createReadStream(requestPath, { start: start, end: end });
-            contents.on('open', () => {
-              this.genLog(206, request, sock);
-              sock.write(this.genHeaders(206, null, [
-                `Last-Modified: ${moment(stats.mtime).tz("Africa/Bissau").format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
-                `ETag: ${etag(stats)}`,
-                `Content-Type: ${mime.contentType(path.extname(requestPath)) || 'application/octet-stream'}`,
-                ...newHeaders
-              ]));
-
-              contents.pipe(sock);
-            });
-          }
-
-        // Normal static files
-        } else {
-          let contents = fs.createReadStream(requestPath);
-          contents.on('open', () => {
-            this.genLog(200, request, sock);
-            sock.write(this.genHeaders(200, null, [
-              `Last-Modified: ${moment(stats.mtime).tz("Africa/Bissau").format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
-              `ETag: ${etag(stats)}`,
-              `Content-Type: ${mime.contentType(path.extname(requestPath)) || 'application/octet-stream'}`,
-              `Content-Length: ${stats.size}`,
-              'Cache-Control: public, max-age=0'
-            ]));
-
-            contents.pipe(sock);
-          });
-        }
-      }
-    }
-  });
-};
-
-Lobabob.prototype.statusColor = function(status) {
-  // Morgan colorscheme
-  let color = status >= 500 ? 31 // red
-     : status >= 400 ? 33 // yellow
-     : status >= 300 ? 36 // cyan
-     : status >= 200 ? 32 // green
-     : 0; // no color
-  return `\x1b[${color}m${status}\x1b[0m`;
-};
-
-// Extract proper range for partial content
-Lobabob.prototype.readRangeHeader = function(range, totalLength) {
-  if (range == null || range.length == 0)
-    return null;
-
-  var array = range.split(/bytes=([0-9]*)-([0-9]*)/);
-  var start = parseInt(array[1]);
-  var end = parseInt(array[2]);
-  var result = {
-    Start: isNaN(start) ? 0 : start,
-    End: isNaN(end) ? (totalLength - 1) : end
-  };
-  
-  if (!isNaN(start) && isNaN(end)) {
-    result.Start = start;
-    result.End = totalLength - 1;
-  }
-
-  if (isNaN(start) && !isNaN(end)) {
-    result.Start = totalLength - end;
-    result.End = totalLength - 1;
-  }
-
-  return result;
-};
-
-// Generate Apache style directory listing
-Lobabob.prototype.genDirectoryListing = function(dir, request, cb) {
-  let body = "";
-  fs.readdir(dir, (err, files) => {
-    if (err) cb(body);
-    else {
-      body = `<!DOCTYPE html>
-        <html lang="en">
-         <head>
-          <title>Index of ${request}</title>
-         </head>
-         <body>
-        <h1>Index of ${request}</h1>
-        <ul>
-        <li><a href="${path.dirname(request)}">..</li>
-      `;
-      files.forEach(file => {
-        body += `<li><a href="${path.join(request, file)}">${file}</a></li>`;
-      });
-      body += `
-        </ul>
-        <address>Lobabob Server v${VERSION} Port ${this.get('port')}</address>
-        </body></html>
-      `;
-      cb(body);
-    }
-  });
+  this.options = _.defaults(this.options, utils.defaults);
 };
 
 module.exports = function(options) {
