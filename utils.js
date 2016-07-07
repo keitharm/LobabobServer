@@ -1,4 +1,4 @@
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 const Promise = require('bluebird');
 const _       = require('lodash');
 const path    = require('path');
