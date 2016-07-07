@@ -5,10 +5,14 @@ const util  = require('util');
 const parse = require('parse-headers');
 const spawn = require('child_process').spawn;
 const EventEmitter = require('events').EventEmitter;
+const os = require('os');
+
+const utils = require('./utils');
 
 let options;
 
 function CGI(requestPath, request) {
+  console.log(request);
   this.requestPath = requestPath;
   this.request = request;
 }
@@ -24,6 +28,12 @@ CGI.prototype.run = function(cb) {
   }
 
   let child = spawn(this.requestPath, [], {env: {
+    "DOCUMENT_ROOT": options['static'],
+    "HTTP_COOKIE": this.request.getCookies(),
+    "HTTP_HOST": os.hostname(),
+    "HTTP_REFERER": this.request.headers.referer || '',
+    "HTTP_USER_AGENT": this.request.headers['user-agent'],
+    "SERVER_SOFTWARE": `Lobabob v${utils.VERSION}`,
     "REQUEST_METHOD": this.request.getVerb(),
     "SCRIPT_FILENAME": this.requestPath,
     "CONTENT_TYPE": bodyType,
@@ -34,23 +44,8 @@ CGI.prototype.run = function(cb) {
     "REMOTE_ADDR": this.request.getIP(),
     "REMOTE_PORT": this.request.getPort(),
     "REDIRECT_STATUS": 200,
-    "HTTP_COOKIE": this.request.getCookies(),
     "QUERY_STRING": this.request.getQueryString()
   }});
-  console.log({
-    "REQUEST_METHOD": this.request.getVerb(),
-    "SCRIPT_FILENAME": this.requestPath,
-    "CONTENT_TYPE": bodyType,
-    "CONTENT_LENGTH": bodyLen,
-    "SERVER_PROTOCOL": "HTTP/1.1",
-    "GATEWAY_INTERFACE": "CGI/1.1",
-    "REMOTE_HOST": this.request.getIP(),
-    "REMOTE_ADDR": this.request.getIP(),
-    "REMOTE_PORT": this.request.getPort(),
-    "REDIRECT_STATUS": 200,
-    "HTTP_COOKIE": this.request.getCookies(),
-    "QUERY_STRING": this.request.getQueryString()
-  });
 
   if (this.request.body !== undefined) {
     child.stdin.write(this.request.body);
