@@ -5,19 +5,22 @@ const _     = require('lodash');
 const Request  = require('./Request');
 const Response = require('./Response');
 const Handler  = require('./Handler');
+const CGI      = require('./CGI');
 const utils    = require('./utils');
 
 function Lobabob(options) {
   this.options = options;
   this.setDefaults();
 
-  // Directory to serve static files from
+  // Directory to serve static files and cgi-bin scripts from
   this.set('static', path.resolve(this.get('static')));
+  this.set('cgibin', path.resolve(this.get('cgibin')));
 
   // Send server options
   Request.init(this.options);
   Response.init(this.options);
   Handler.init(this.options);
+  CGI.init(this.options);
   utils.init(this.options);
 
   utils.debug(this.options);
@@ -87,7 +90,9 @@ Lobabob.prototype.start = function() {
     });
 
     sock.on('error', err => {
-      utils.debug(err);
+      // Don't log errors from client terminating the connection
+      if (err.code === "ECONNRESET" || err.code === "EPIPE") return;
+      utils.debug(err.code);
     });
 
   }).listen(this.get('port'));

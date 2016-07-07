@@ -2,10 +2,10 @@
   Request extracts the verb, path, and body information
   and also parses headers
 */
-
 const parse  = require('parse-headers');
 const decode = require('urldecode');
 const qs     = require('querystring');
+const cookie = require('cookie');
 
 let options;
 
@@ -21,6 +21,11 @@ Request.prototype.parseHeaders = function() {
 
   this.verb = resourceInfo[0];
   this.rawPath = decode(resourceInfo[1]);
+  this.getVars = {};
+  this.cookies = {};
+  if (this.headers.cookie !== undefined) {
+    this.cookies = cookie.parse(this.headers.cookie);
+  }
 
   // Extract GET vars
   let getLoc = this.rawPath.indexOf('?');

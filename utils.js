@@ -16,7 +16,7 @@ module.exports = {
     return `\x1b[${color}m${status}\x1b[0m`;
   },
   readRangeHeader(range, totalLength) {
-    if (range == null || range.length == 0)
+    if (range === null || range.length === 0)
       return null;
 
     let array = range.split(/bytes=([0-9]*)-([0-9]*)/);

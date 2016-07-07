@@ -11,7 +11,6 @@ const fs = require('fs');
 let options;
 
 function Response() {
-  this.code = 500;
   this.body = null;
 }
 
@@ -22,6 +21,7 @@ Response.prototype.genHeaders = function(extra = []) {
     // Dirlist is in the body so the type is html
     if (this.type === "dirList") {
       extra.push(`Content-Type: text/html;charset=UTF-8`);
+      extra.push(`Content-Length: ${this.body.length}`);
 
     // Invalid range headers
     } else if (this.type === "invalidRange") {
@@ -32,20 +32,24 @@ Response.prototype.genHeaders = function(extra = []) {
     } else {
       extra.push(`Content-Type: text/plain;charset=UTF-8`);
       extra.push(`Content-Length: ${this.body.length}`);
-      extra.push(`Cache-Control: no-cache`);
     }
-  }
+    extra.push(`Cache-Control: no-cache`);
 
   // If we have a stream, mime type and size are in the response object
-  if (this.stream !== undefined) {
+  } else if (this.stream !== undefined) {
+
+    // Content-Rnage
     if (this.type === "validRange") {
       extra.push(`Content-Range: bytes ${this.size.start}-${this.size.end}/${this.size.total}`);
       extra.push(`Content-Length: ${this.size.start === this.size.end ? 0 : (this.size.end - this.size.start + 1)}`);
       extra.push(`Accept-Ranges: bytes`);
       extra.push(`Cache-Control: no-cache`);
+
+    // Send entire stream
     } else {
       extra.push(`Content-Type: ${this.mime}`);
       extra.push(`Content-Length: ${this.size}`);
+      extra.push(`Cache-Control: public, max-age=0`);
     }
   }
 
@@ -82,8 +86,7 @@ Response.prototype.output = function() {
   let content = this.headers;
 
   if (this.body !== null) {
-    content += `
-${this.body}`;
+    content += `${this.body}`;
   }
   return content;
 };

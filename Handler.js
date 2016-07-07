@@ -8,6 +8,7 @@ const Promise  = require('bluebird');
 const mime     = require('mime-types');
 
 const Response = require('./Response');
+const CGI      = require('./CGI');
 const utils    = require('./utils');
 
 const fs = Promise.promisifyAll(require("fs"));
@@ -23,6 +24,7 @@ function Handler(request, headers) {
   // Create the full path of the request
   let requestPath = path.join(options.static, this.request.path);
 
+  // Make sure user is requesting a valid file
   validPath(requestPath).then(info => {
 
     // Check if directory
@@ -59,7 +61,7 @@ function Handler(request, headers) {
           this.response.setSize(stat.size);
           this.response.setMime(mime.contentType(path.extname(path.join(requestPath, options['index']))) || 'application/octet-stream');
           this.response.setStream(path.join(requestPath, options['index']), () => {
-            this.done(this.response);
+            this.done();
           });
           return;
 
@@ -85,7 +87,7 @@ function Handler(request, headers) {
           this.response.setType("invalidRange");
           this.response.setSize(info.stat.size);
 
-          // Send [roper range
+          // Send proper range
           utils.genLog(416, request);
           this.response.setStatus(416);
           this.done();
@@ -99,30 +101,42 @@ function Handler(request, headers) {
           //`Last-Modified: ${moment(stats.mtime).tz("Africa/Bissau").format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
 
           this.response.setStream(requestPath, {start, end}, () => {
-            this.done(this.response);
+            this.done();
           });
           return;
         }
 
       // Normal static files
       } else {
-        // At this point, we should add checks for cgi-bin scripts
-        let fileEtag = etag(info.stat);
-        let code = 200;
 
-        this.response.setEtag(fileEtag);
-        if (this.headers['if-none-match'] === fileEtag) {
-          code = 304;
+        // CGI Script
+        if (inCGIFolder(requestPath)) {
+          let cgi = new CGI.create(requestPath, request);
+          cgi.run(data => {
+            utils.genLog(200, request);
+            this.response.setBody(data);
+            this.response.setStatus(200);
+            this.done();
+          });
+        // Normal static file
+        } else {
+          let fileEtag = etag(info.stat);
+          let code = 200;
+
+          this.response.setEtag(fileEtag);
+          if (this.headers['if-none-match'] === fileEtag) {
+            code = 304;
+          }
+
+          utils.genLog(code, request);
+          this.response.setStatus(code);
+          this.response.setSize(info.stat.size);
+          this.response.setMime(mime.contentType(path.extname(requestPath)) || 'application/octet-stream');
+          this.response.setStream(requestPath, () => {
+            this.done();
+          });
+          return;
         }
-
-        utils.genLog(code, request);
-        this.response.setStatus(code);
-        this.response.setSize(info.stat.size);
-        this.response.setMime(mime.contentType(path.extname(requestPath)) || 'application/octet-stream');
-        this.response.setStream(requestPath, () => {
-          this.done(this.response);
-        });
-        return;
       }
     }
 
@@ -172,6 +186,11 @@ function validPath(requestPath) {
     });
   });
 }
+
+function inCGIFolder(requestPath) {
+  return requestPath.indexOf(options.cgibin) === 0;
+}
+
 module.exports = {
   init,
   create: Handler
