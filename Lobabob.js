@@ -59,9 +59,6 @@ Lobabob.prototype.start = function() {
 
       if (request && headersDone && !bodyDone) {
         if (request.hasBody()) {
-          // // Have to check for chunked request here as well in the future
-          // // Extract body if it is an appropriate request
-          //request.moreData(); // Send the possibly chunked data to the request object
           request.setBody(buffer);
           bodyDone = true;
 

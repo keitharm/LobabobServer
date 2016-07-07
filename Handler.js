@@ -44,7 +44,6 @@ function Handler(request, headers) {
           this.response.setStatus(500);
           this.done();
         });
-        return;
       } else {
         // Check if it has an index file
         hasIndex(requestPath).then(stat => {
@@ -63,14 +62,12 @@ function Handler(request, headers) {
           this.response.setStream(path.join(requestPath, options['index']), () => {
             this.done();
           });
-          return;
 
         // No index file
         }, () => {
           utils.genLog(403, request);
           this.response.setStatus(403);
           this.done();
-          return;
         })
       }
 
@@ -91,19 +88,15 @@ function Handler(request, headers) {
           utils.genLog(416, request);
           this.response.setStatus(416);
           this.done();
-          return;
         } else {
           utils.genLog(206, request);
           this.response.setStatus(206);
           this.response.setType("validRange");
           this.response.setSize({start, end, total: info.stat.size});
           this.response.setMime(mime.contentType(path.extname(requestPath)) || 'application/octet-stream');
-          //`Last-Modified: ${moment(stats.mtime).tz("Africa/Bissau").format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
-
           this.response.setStream(requestPath, {start, end}, () => {
             this.done();
           });
-          return;
         }
 
       // Normal static files
@@ -144,7 +137,6 @@ function Handler(request, headers) {
           this.response.setStream(requestPath, () => {
             this.done();
           });
-          return;
         }
       }
     }
