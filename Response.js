@@ -20,18 +20,28 @@ Response.prototype.genHeaders = function(extra = []) {
 
     // Dirlist is in the body so the type is html
     if (this.type === "dirList") {
-      extra.push(`Content-Type: text/html;charset=UTF-8`);
-      extra.push(`Content-Length: ${this.body.length}`);
+      extra.push(
+        `Content-Type: text/html;charset=UTF-8`,
+        `Content-Length: ${this.body.length}`
+      );
 
     // Invalid range headers
     } else if (this.type === "invalidRange") {
-      extra.push(`Content-Range: bytes */${this.size}`);
-      extra.push(`Content-Length: 0`);
+      extra.push(
+        `Content-Range: bytes */${this.size}`,
+        `Content-Length: 0`
+      );
+
+    // CGI script
+    } else if (this.type === "CGI") {
+      extra.push(...this.headers);
 
     // else just assume normal plain text
     } else {
-      extra.push(`Content-Type: text/plain;charset=UTF-8`);
-      extra.push(`Content-Length: ${this.body.length}`);
+      extra.push(
+        `Content-Type: text/plain;charset=UTF-8`,
+        `Content-Length: ${this.body.length}`
+      );
     }
     extra.push(`Cache-Control: no-cache`);
 
@@ -40,16 +50,20 @@ Response.prototype.genHeaders = function(extra = []) {
 
     // Content-Rnage
     if (this.type === "validRange") {
-      extra.push(`Content-Range: bytes ${this.size.start}-${this.size.end}/${this.size.total}`);
-      extra.push(`Content-Length: ${this.size.start === this.size.end ? 0 : (this.size.end - this.size.start + 1)}`);
-      extra.push(`Accept-Ranges: bytes`);
-      extra.push(`Cache-Control: no-cache`);
+      extra.push(
+        `Content-Range: bytes ${this.size.start}-${this.size.end}/${this.size.total}`,
+        `Content-Length: ${this.size.start === this.size.end ? 0 : (this.size.end - this.size.start + 1)}`,
+        `Accept-Ranges: bytes`,
+        `Cache-Control: no-cache`
+      );
 
     // Send entire stream
     } else {
-      extra.push(`Content-Type: ${this.mime}`);
-      extra.push(`Content-Length: ${this.size}`);
-      extra.push(`Cache-Control: public, max-age=0`);
+      extra.push(
+        `Content-Type: ${this.mime}`,
+        `Content-Length: ${this.size}`,
+        `Cache-Control: public, max-age=0`
+      );
     }
   }
 
@@ -75,15 +89,17 @@ Response.prototype.genHeaders = function(extra = []) {
     headers.push('You do not have permission to access this resource.');
   } else if (this.code === 401) {
     headers.push('You are not authorized to access this resource.');
+  } else if (this.code === 500) {
+    headers.push('Internal Server Error');
   } else {
     headers.push('');
   }
-  this.headers = headers.join('\r\n');
+  this.formattedHeaders = headers.join('\r\n');
 };
 
 Response.prototype.output = function() {
   this.genHeaders();
-  let content = this.headers;
+  let content = this.formattedHeaders;
 
   if (this.body !== null) {
     content += `${this.body}`;
@@ -92,6 +108,7 @@ Response.prototype.output = function() {
 };
 
 Response.prototype.setStatus = function(code) { this.code = code };
+Response.prototype.setHeaders = function(headers) { this.headers = headers };
 Response.prototype.setBody = function(body) { this.body = body };
 Response.prototype.setSize = function(size) { this.size = size };
 Response.prototype.setMime = function(mime) { this.mime = mime };

@@ -111,13 +111,24 @@ function Handler(request, headers) {
 
         // CGI Script
         if (inCGIFolder(requestPath)) {
-          let cgi = new CGI.create(requestPath, request);
-          cgi.run(data => {
-            utils.genLog(200, request);
-            this.response.setBody(data);
-            this.response.setStatus(200);
+          let cgi = new CGI.create(requestPath, this.request);
+          try {
+            cgi.run();
+            cgi.on('done', data => {
+              this.response.setType("CGI");
+              this.response.setHeaders(data.headers);
+              this.response.setBody(data.body);
+              utils.genLog(data.status, request);
+              this.response.setStatus(data.status);
+              this.done();
+            });
+          } catch (e) {
+            utils.genLog(500, request);
+            this.response.setStatus(500);
+            //this.response.setBody(body);
+            //this.response.setType("dirList");
             this.done();
-          });
+          }
         // Normal static file
         } else {
           let fileEtag = etag(info.stat);

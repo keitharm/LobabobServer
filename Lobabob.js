@@ -57,21 +57,22 @@ Lobabob.prototype.start = function() {
         headersDone = true;
       }
 
-      if (request && !bodyDone && request.hasBody()) {
-        // // Have to check for chunked request here as well in the future
-        // // Extract body if it is an appropriate request
-        //request.moreData(); // Send the possibly chunked data to the request object
+      if (request && headersDone && !bodyDone) {
+        if (request.hasBody()) {
+          // // Have to check for chunked request here as well in the future
+          // // Extract body if it is an appropriate request
+          //request.moreData(); // Send the possibly chunked data to the request object
+          request.setBody(buffer);
+          bodyDone = true;
 
-        request.setBody(buffer);
-        bodyDone = true;
-
-      // If the request verb doesn't expect a bodyDone
-      } else {
-        bodyDone = true;
+        // If the request verb doesn't expect a bodyDone
+        } else {
+          bodyDone = true;
+        }
       }
 
       // All done extracting/parsing headers and the body
-      if (headersDone && bodyDone) {
+      if (request && headersDone && bodyDone) {
 
         // Send completed request object to the handler
         handler = new Handler.create(request, request.getHeaders());
