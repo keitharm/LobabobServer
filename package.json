@@ -22,6 +22,7 @@
   },
   "homepage": "https://github.com/keitharm/LobabobServer#readme",
   "dependencies": {
+    "async": "^2.0.0-rc.6",
     "bluebird": "^3.4.1",
     "cookie": "^0.3.1",
     "etag": "^1.7.0",
