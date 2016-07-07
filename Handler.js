@@ -110,7 +110,7 @@ function Handler(request, headers) {
       } else {
 
         // CGI Script
-        if (inCGIFolder(requestPath)) {
+        if (inCGIFolder(requestPath) && isExecutable(requestPath)) {
           let cgi = new CGI.create(requestPath, this.request);
           try {
             cgi.run();
@@ -199,6 +199,11 @@ function validPath(requestPath) {
 function inCGIFolder(requestPath) {
   return requestPath.indexOf(options.cgibin) === 0;
 }
+
+function isExecutable(path){
+    let res = fs.statSync(path);
+    return !!(1 & parseInt ((res.mode & parseInt ("777", 8)).toString (8)[0]));
+};
 
 module.exports = {
   init,
