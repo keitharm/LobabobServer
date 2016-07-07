@@ -1,6 +1,6 @@
 {
   "name": "lobabob",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Lobabob turns any directory into a basic webserver",
   "bin": {
     "lobabob": "server.js"
