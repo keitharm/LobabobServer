@@ -39,6 +39,8 @@ Request.prototype.hasBody = function() {
   return this.verb === "POST" || this.verb === "PUT";
 };
 
+
+
 Request.prototype.setAddress = function(parts) {
   this.ip   = parts.ip;
   this.port = parts.port;
@@ -57,6 +59,8 @@ Request.prototype.getPath = function() { return this.path };
 Request.prototype.getCookies = function() { return this.cookies };
 Request.prototype.getQueryString = function() { return this.queryString };
 Request.prototype.getHeaders = function() { return this.headers };
+Request.prototype.getBodySize = function() { return Number(this.getHeaders()['content-length']) };
+Request.prototype.getConnectionType = function() { return this.getHeaders()['connection'] || 'close' };
 
 // Receive options
 function init(ops) {

@@ -76,7 +76,6 @@ Response.prototype.genHeaders = function(extra = []) {
   let headers = [
     `HTTP/1.1 ${this.code} ${statusCodes[this.code]}`,
     `Server: Lobabob v${utils.VERSION}`,
-    `Connection: keep-alive`,
     `Date: ${moment(new Date().getTime()).format('ddd, D MMM YYYY HH:mm:ss [GMT]')}`,
     ...extra
   ];

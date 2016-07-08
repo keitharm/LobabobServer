@@ -38,8 +38,9 @@ Lobabob.prototype.start = function() {
     let headersDone = false;
     let bodyDone    = false;
 
+    let request, handler, bodySize;
+
     sock.on('data', data => {
-      let request, handler;
       buffer += data;
 
       // Find 1st occurance of two line breaks marking end of header data
@@ -59,8 +60,16 @@ Lobabob.prototype.start = function() {
 
       if (request && headersDone && !bodyDone) {
         if (request.hasBody()) {
-          request.setBody(buffer);
-          bodyDone = true;
+          if (bodySize === undefined) {
+            bodySize = request.getBodySize();
+          }
+
+          if (buffer.length === bodySize) {
+            request.setBody(buffer);
+            buffer = buffer.slice(bodySize);
+
+            bodyDone = true;
+          }
 
         // If the request verb doesn't expect a bodyDone
         } else {
@@ -82,7 +91,17 @@ Lobabob.prototype.start = function() {
 
           // Else, just write to socket since body is included in response
           } else {
-            sock.end(response.output());
+            if (request.getConnectionType() === "keep-alive") {
+              sock.write(response.output());
+
+              headersDone = false;
+              bodyDone    = false;
+              request     = undefined;
+              handler     = undefined;
+              bodySize    = undefined;
+            } else {
+              sock.end(response.output());
+            }
           }
         });
       }
